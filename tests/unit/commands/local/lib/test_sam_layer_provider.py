@@ -1,9 +1,13 @@
+import os
 from unittest import TestCase
+from unittest.mock import patch
 
 from parameterized import parameterized
 
-from samcli.lib.providers.provider import LayerVersion
+from samcli.lib.providers.provider import LayerVersion, BuildableStack
 from samcli.lib.providers.sam_layer_provider import SamLayerProvider
+
+STACK_PATH = os.path.join("this_is_a", "stack_path")
 
 
 class TestSamLayerProvider(TestCase):
@@ -73,28 +77,51 @@ class TestSamLayerProvider(TestCase):
 
     def setUp(self):
         self.parameter_overrides = {}
-        self.provider = SamLayerProvider(self.TEMPLATE, parameter_overrides=self.parameter_overrides)
+        self.stack = BuildableStack("this_is_a", "stack_path", "template.yaml", self.parameter_overrides, self.TEMPLATE)
+        with patch("samcli.lib.providers.sam_stack_provider.get_template_data") as get_template_data_mock:
+            get_template_data_mock.return_value = self.TEMPLATE
+            self.provider = SamLayerProvider([self.stack])
 
     @parameterized.expand(
         [
             (
                 "ServerlessLayer",
-                LayerVersion("ServerlessLayer", "PyLayer/", ["python3.8", "python3.6"], {"BuildMethod": "python3.8"}),
+                LayerVersion(
+                    "ServerlessLayer",
+                    "PyLayer/",
+                    ["python3.8", "python3.6"],
+                    {"BuildMethod": "python3.8"},
+                    stack_path=STACK_PATH,
+                ),
             ),
             (
                 "LambdaLayer",
-                LayerVersion("LambdaLayer", "PyLayer/", ["python3.8", "python3.6"], {"BuildMethod": "python3.8"}),
+                LayerVersion(
+                    "LambdaLayer",
+                    "PyLayer/",
+                    ["python3.8", "python3.6"],
+                    {"BuildMethod": "python3.8"},
+                    stack_path=STACK_PATH,
+                ),
             ),
             (
                 "ServerlessLayerNoBuild",
-                LayerVersion("ServerlessLayerNoBuild", "PyLayer/", ["python3.8", "python3.6"], None),
+                LayerVersion(
+                    "ServerlessLayerNoBuild", "PyLayer/", ["python3.8", "python3.6"], None, stack_path=STACK_PATH
+                ),
             ),
-            ("LambdaLayerNoBuild", LayerVersion("LambdaLayerNoBuild", "PyLayer/", ["python3.8", "python3.6"], None)),
+            (
+                "LambdaLayerNoBuild",
+                LayerVersion("LambdaLayerNoBuild", "PyLayer/", ["python3.8", "python3.6"], None, stack_path=STACK_PATH),
+            ),
             (
                 "ServerlessLayerS3Content",
-                LayerVersion("ServerlessLayerS3Content", ".", ["python3.8", "python3.6"], None),
+                LayerVersion("ServerlessLayerS3Content", ".", ["python3.8", "python3.6"], None, stack_path=STACK_PATH),
             ),
-            ("LambdaLayerS3Content", LayerVersion("LambdaLayerS3Content", ".", ["python3.8", "python3.6"], None)),
+            (
+                "LambdaLayerS3Content",
+                LayerVersion("LambdaLayerS3Content", ".", ["python3.8", "python3.6"], None, stack_path=STACK_PATH),
+            ),
         ]
     )
     def test_get_must_return_each_layer(self, name, expected_output):
