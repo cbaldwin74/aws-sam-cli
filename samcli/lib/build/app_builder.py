@@ -332,7 +332,12 @@ class ApplicationBuilder:
                     self._stream_writer.flush()
 
     def _build_layer(
-        self, layer_name: str, codeuri: str, specified_workflow: str, compatible_runtimes: List[str]
+        self,
+        layer_name: str,
+        codeuri: str,
+        specified_workflow: str,
+        compatible_runtimes: List[str],
+        artifacts_dir: str,
     ) -> str:
         # Create the arguments to pass to the builder
         # Code is always relative to the given base directory.
@@ -342,7 +347,7 @@ class ApplicationBuilder:
         subfolder = get_layer_subfolder(specified_workflow)
 
         # artifacts directory will be created by the builder
-        artifacts_dir = str(pathlib.Path(self._build_dir, layer_name, subfolder))
+        artifacts_dir = str(pathlib.Path(artifacts_dir, subfolder))
 
         with osutils.mkdir_temp() as scratch_dir:
             manifest_path = self._manifest_path_override or os.path.join(code_dir, config.manifest_name)

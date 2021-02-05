@@ -53,6 +53,14 @@ class Function(NamedTuple):
     # The path of the stack relative to the root stack, it is empty for functions in root stack
     stack_path: str = ""
 
+    @property
+    def build_identifier(self) -> str:
+        """
+        Return the unique path-like identifier
+        while will used for identify a function from functions in a multi-stack situation
+        """
+        return os.path.join(self.stack_path, self.name)
+
 
 class ResourcesToBuildCollector:
     def __init__(self):
@@ -238,6 +246,14 @@ class LayerVersion:
     @property
     def compatible_runtimes(self):
         return self._compatible_runtimes
+
+    @property
+    def build_identifier(self) -> str:
+        """
+        Return the unique path-like identifier
+        while will used for identify a layer from layers in a multi-stack situation
+        """
+        return os.path.join(self.stack_path, self.name)
 
     def __eq__(self, other):
         if isinstance(other, type(self)):

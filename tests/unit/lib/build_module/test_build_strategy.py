@@ -168,12 +168,14 @@ class DefaultBuildStrategyTest(BuildStrategyBaseTest):
                     self.layer_build_definition1.layer.codeuri,
                     self.layer_build_definition1.layer.build_method,
                     self.layer_build_definition1.layer.compatible_runtimes,
+                    ANY,
                 ),
                 call(
                     self.layer_build_definition2.layer.name,
                     self.layer_build_definition2.layer.codeuri,
                     self.layer_build_definition2.layer.build_method,
                     self.layer_build_definition2.layer.compatible_runtimes,
+                    ANY,
                 ),
             ]
         )
@@ -181,8 +183,8 @@ class DefaultBuildStrategyTest(BuildStrategyBaseTest):
         # assert that mock path has been called
         mock_path.assert_has_calls(
             [
-                call(given_build_dir, self.function_build_definition1.get_function_name()),
-                call(given_build_dir, self.function_build_definition2.get_function_name()),
+                call(given_build_dir, self.function_build_definition1.get_function_build_identifier()),
+                call(given_build_dir, self.function_build_definition2.get_function_build_identifier()),
             ],
             any_order=True,
         )
@@ -262,9 +264,11 @@ class CachedBuildStrategyTest(BuildStrategyBaseTest):
             )
             func1 = Mock()
             func1.name = "func1_name"
+            func1.build_identifier = "func1_build_identifier"
             func1.inlinecode = None
             func2 = Mock()
             func2.name = "func2_name"
+            func2.build_identifier = "func2_build_identifier"
             func2.inlinecode = None
             build_definition = build_graph.get_function_build_definitions()[0]
             layer_definition = build_graph.get_layer_build_definitions()[0]
@@ -272,6 +276,7 @@ class CachedBuildStrategyTest(BuildStrategyBaseTest):
             build_graph.put_function_build_definition(build_definition, func2)
             layer = Mock()
             layer.name = "layer_name"
+            layer.build_identifier = "layer_build_identifier"
             build_graph.put_layer_build_definition(layer_definition, layer)
             cached_build_strategy.build_single_function_definition(build_definition)
             cached_build_strategy.build_single_layer_definition(layer_definition)

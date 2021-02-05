@@ -31,13 +31,16 @@ class TestApplicationBuilder_build(TestCase):
         self.func1 = Mock()
         self.func1.packagetype = ZIP
         self.func1.name = "function_name1"
+        self.func1.build_identifier = os.path.join("StackJ", "function_name1")
         self.func1.inlinecode = None
         self.func2 = Mock()
         self.func2.packagetype = ZIP
         self.func2.name = "function_name2"
+        self.func2.build_identifier = os.path.join("StackJ", "function_name2")
         self.func2.inlinecode = None
         self.imageFunc1 = Mock()
         self.imageFunc1.name = "function_name3"
+        self.imageFunc1.build_identifier = os.path.join("StackJ", "function_name3")
         self.imageFunc1.inlinecode = None
 
         self.layer1 = Mock()
@@ -45,7 +48,9 @@ class TestApplicationBuilder_build(TestCase):
 
         self.imageFunc1.packagetype = IMAGE
         self.layer1.build_method = "build_method"
+        self.layer1.build_identifier = os.path.join("StackJ", "layer_name1")
         self.layer2.build_method = "build_method"
+        self.layer2.build_identifier = os.path.join("StackJ", "layer_name2")
 
         resources_to_build_collector = ResourcesToBuildCollector()
         resources_to_build_collector.add_functions([self.func1, self.func2, self.imageFunc1])
@@ -59,7 +64,7 @@ class TestApplicationBuilder_build(TestCase):
         build_image_function_mock_return = Mock()
         build_layer_mock = Mock()
 
-        def build_layer_return(layer_name, layer_codeuri, layer_build_method, layer_compatible_runtimes):
+        def build_layer_return(layer_name, layer_codeuri, layer_build_method, layer_compatible_runtimes, artifact_dir):
             return f"{layer_name}_location"
 
         build_layer_mock.side_effect = build_layer_return
@@ -69,8 +74,8 @@ class TestApplicationBuilder_build(TestCase):
         self.builder._build_layer = build_layer_mock
 
         build_function_mock.side_effect = [
-            os.path.join("builddir", self.func1.name),
-            os.path.join("builddir", self.func2.name),
+            os.path.join("builddir", self.func1.build_identifier),
+            os.path.join("builddir", self.func2.build_identifier),
             build_image_function_mock_return,
         ]
 
@@ -80,11 +85,11 @@ class TestApplicationBuilder_build(TestCase):
         self.assertEqual(
             result,
             {
-                self.func1.name: os.path.join("builddir", self.func1.name),
-                self.func2.name: os.path.join("builddir", self.func2.name),
-                self.imageFunc1.name: build_image_function_mock_return,
-                self.layer1.name: f"{self.layer1.name}_location",
-                self.layer2.name: f"{self.layer2.name}_location",
+                self.func1.build_identifier: os.path.join("builddir", self.func1.build_identifier),
+                self.func2.build_identifier: os.path.join("builddir", self.func2.build_identifier),
+                self.imageFunc1.build_identifier: build_image_function_mock_return,
+                self.layer1.build_identifier: f"{self.layer1.name}_location",
+                self.layer2.build_identifier: f"{self.layer2.name}_location",
             },
         )
 
@@ -123,8 +128,20 @@ class TestApplicationBuilder_build(TestCase):
 
         build_layer_mock.assert_has_calls(
             [
-                call(self.layer1.name, self.layer1.codeuri, self.layer1.build_method, self.layer1.compatible_runtimes),
-                call(self.layer2.name, self.layer2.codeuri, self.layer2.build_method, self.layer2.compatible_runtimes),
+                call(
+                    self.layer1.name,
+                    self.layer1.codeuri,
+                    self.layer1.build_method,
+                    self.layer1.compatible_runtimes,
+                    os.path.join("builddir", self.layer1.build_identifier),
+                ),
+                call(
+                    self.layer2.name,
+                    self.layer2.codeuri,
+                    self.layer2.build_method,
+                    self.layer2.compatible_runtimes,
+                    os.path.join("builddir", self.layer2.build_identifier),
+                ),
             ]
         )
 
@@ -299,7 +316,7 @@ class TestApplicationBuilderForLayerBuild(TestCase):
         build_function_in_process_mock = Mock()
 
         self.builder._build_function_in_process = build_function_in_process_mock
-        self.builder._build_layer("layer_name", "code_uri", "python3.8", ["python3.8"])
+        self.builder._build_layer("layer_name", "code_uri", "python3.8", ["python3.8"], "build_identifier")
 
         build_function_in_process_mock.assert_called_once()
         args, _ = build_function_in_process_mock.call_args_list[0]
@@ -322,7 +339,7 @@ class TestApplicationBuilderForLayerBuild(TestCase):
         build_function_on_container_mock = Mock()
 
         self.builder._build_function_on_container = build_function_on_container_mock
-        self.builder._build_layer("layer_name", "code_uri", "python3.8", ["python3.8"])
+        self.builder._build_layer("layer_name", "code_uri", "python3.8", ["python3.8"], "build_identifier")
 
         build_function_on_container_mock.assert_called_once()
         args, _ = build_function_on_container_mock.call_args_list[0]
