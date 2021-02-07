@@ -53,7 +53,7 @@ class Function(NamedTuple):
 
 class ResourcesToBuildCollector:
     def __init__(self):
-        self.result = {"Function": [], "Layer": []}
+        self.result = {"Function": [], "Layer": [], "ServerlessApplication": []}
 
     def add_function(self, function):
         self.result.get("Function").append(function)
@@ -67,6 +67,12 @@ class ResourcesToBuildCollector:
     def add_layers(self, layers):
         self.result.get("Layer").extend(layers)
 
+    def add_serverless_application(self, application):
+        self.result.get("ServerlessApplication").append(application)
+
+    def add_serverless_applications(self, applications):
+        self.result.get("ServerlessApplication").extend(applications)
+
     @property
     def functions(self):
         return self.result.get("Function")
@@ -74,6 +80,10 @@ class ResourcesToBuildCollector:
     @property
     def layers(self):
         return self.result.get("Layer")
+
+    @property
+    def serverless_applications(self):
+        return self.result.get("ServerlessApplication")
 
     def __eq__(self, other):
         if isinstance(other, type(self)):
@@ -306,3 +316,20 @@ class AbstractApiProvider:
         :yields Api: namedtuple containing the API information
         """
         raise NotImplementedError("not implemented")
+
+class ServerlessApplication(NamedTuple):
+    """
+    A Serverless Application
+    """
+    # Function name or logical ID
+    name: str
+    # Location
+    location: str|dict
+    # Notification ARNs
+    notification_arns: Optional[List]
+    # Parameters
+    parameters: Optional[dict]
+    # Tags
+    tags: Optional[dict]
+    # Timeout
+    timeout: Optional[int]
