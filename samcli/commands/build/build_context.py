@@ -12,6 +12,7 @@ from samcli.lib.providers.provider import ResourcesToBuildCollector
 from samcli.local.docker.manager import ContainerManager
 from samcli.lib.providers.sam_function_provider import SamFunctionProvider
 from samcli.lib.providers.sam_layer_provider import SamLayerProvider
+from samcli.lib.providers.sam_serverless_application_provider import SamServerlessApplicationProvider
 from samcli.commands._utils.template import get_template_data
 from samcli.local.lambdafn.exceptions import ResourceNotFound
 from samcli.commands.build.exceptions import InvalidBuildDirException, MissingBuildMethodException
@@ -60,14 +61,18 @@ class BuildContext:
 
         self._function_provider: Optional[SamFunctionProvider] = None
         self._layer_provider: Optional[SamLayerProvider] = None
+        self._serverless_application_provider: Optional[SamServerlessApplicationProvider] = None
         self._template_dict: Optional[Dict] = None
         self._container_manager: Optional[ContainerManager] = None
 
     def __enter__(self) -> "BuildContext":
         self._template_dict = get_template_data(self._template_file)
 
+        LOG.debug("%d resources found in the template", len(self.template_dict.get("Resources", {})))
+
         self._function_provider = SamFunctionProvider(self._template_dict, self._parameter_overrides)
         self._layer_provider = SamLayerProvider(self._template_dict, self._parameter_overrides)
+        self._serverless_application_provider = SamServerlessApplicationProvider(self._template_dict, self._parameter_overrides)
 
         if not self._base_dir:
             # Base directory, if not provided, is the directory containing the template
@@ -130,6 +135,11 @@ class BuildContext:
         return self._layer_provider  # type: ignore
 
     @property
+    def serverless_application_provider(self) -> SamServerlessApplicationProvider:
+        # same as function_provider()
+        return self._serverless_application_provider  # type: ignore
+
+    @property
     def template_dict(self) -> Dict:
         # same as function_provider()
         return self._template_dict  # type: ignore
@@ -187,8 +197,9 @@ class BuildContext:
         if self._resource_identifier:
             self._collect_single_function_and_dependent_layers(self._resource_identifier, result)
             self._collect_single_buildable_layer(self._resource_identifier, result)
+            self._collect_single_buildable_serverless_application(self._resource_identifier, result)
 
-            if not result.functions and not result.layers:
+            if not result.functions and not result.layers and not result.serverless_applications:
                 all_resources = [f.name for f in self.function_provider.get_all() if not f.inlinecode]
                 all_resources.extend([l.name for l in self.layer_provider.get_all()])
 
@@ -196,10 +207,11 @@ class BuildContext:
                     f"{self._resource_identifier} not found. Possible options in your " f"template: {all_resources}"
                 )
                 LOG.info(available_resource_message)
-                raise ResourceNotFound(f"Unable to find a function or layer with name '{self._resource_identifier}'")
+                raise ResourceNotFound(f"Unable to find a function, layer or serverless application with name '{self._resource_identifier}'")
             return result
         result.add_functions([f for f in self.function_provider.get_all() if not f.inlinecode])
         result.add_layers([l for l in self.layer_provider.get_all() if l.build_method is not None])
+        result.add_serverless_applications([a for a in self.serverless_application_provider.get_all() if a.location is not None])
         return result
 
     @property
@@ -258,3 +270,27 @@ class BuildContext:
             raise MissingBuildMethodException(f"Build method missing in layer {resource_identifier}.")
 
         resource_collector.add_layer(layer)
+
+    def _collect_single_buildable_serverless_application(
+        self, resource_identifier: str, resource_collector: ResourcesToBuildCollector
+    ) -> None:
+        """
+        Populate resource_collector with serverless application with provided identifier.
+
+        Parameters
+        ----------
+        resource_collector
+
+        Returns
+        -------
+
+        """
+        serverless_application = self.serverless_application_provider.get(resource_identifier)
+        if not serverless_application:
+            # No serverless application found
+            return
+        if serverless_application and serverless_application.location is None:
+            LOG.error("Serverless Application %s is missing Location Metadata.", self._function_provider)
+            raise MissingBuildMethodException(f"Build method missing in layer {resource_identifier}.")
+
+        resource_collector.add_serverless_application(serverless_application)

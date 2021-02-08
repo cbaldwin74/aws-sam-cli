@@ -34,8 +34,6 @@ class ApiProvider(AbstractApiProvider):
         self.template_dict = SamBaseProvider.get_template(template_dict, parameter_overrides)
         self.resources = self.template_dict.get("Resources", {})
 
-        LOG.debug("%d resources found in the template", len(self.resources))
-
         # Store a set of apis
         self.cwd = cwd
         self.api = self._extract_api(self.resources)

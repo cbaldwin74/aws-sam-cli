@@ -15,7 +15,7 @@ from aws_lambda_builders import RPC_PROTOCOL_VERSION as lambda_builders_protocol
 from aws_lambda_builders.builder import LambdaBuilder
 from aws_lambda_builders.exceptions import LambdaBuilderError
 
-from samcli.lib.build.build_graph import FunctionBuildDefinition, LayerBuildDefinition, BuildGraph
+from samcli.lib.build.build_graph import FunctionBuildDefinition, LayerBuildDefinition, BuildGraph, ServerlessApplicationBuildDefinition
 from samcli.lib.build.build_strategy import (
     DefaultBuildStrategy,
     CachedBuildStrategy,
@@ -161,13 +161,14 @@ class ApplicationBuilder:
 
     def _get_build_graph(self) -> BuildGraph:
         """
-        Converts list of functions and layers into a build graph, where we can iterate on each unique build and trigger
-        build
+        Converts list of functions layers, and serverless applications into a build graph,
+        where we can iterate on each unique build and trigger build
         :return: BuildGraph, which represents list of unique build definitions
         """
         build_graph = BuildGraph(self._build_dir)
         functions = self._resources_to_build.functions
         layers = self._resources_to_build.layers
+        serverless_applications = self._resources_to_build.serverless_applications
         for function in functions:
             function_build_details = FunctionBuildDefinition(
                 function.runtime, function.codeuri, function.packagetype, function.metadata
@@ -179,6 +180,12 @@ class ApplicationBuilder:
                 layer.name, layer.codeuri, layer.build_method, layer.compatible_runtimes
             )
             build_graph.put_layer_build_definition(layer_build_details, layer)
+
+        for application in serverless_applications:
+            application_build_details = ServerlessApplicationBuildDefinition(
+                application.name, application.location
+            )
+            build_graph.put_serverless_application_build_definition(application_build_details, application)
 
         build_graph.clean_redundant_definitions_and_update(not self._is_building_specific_resource)
         return build_graph

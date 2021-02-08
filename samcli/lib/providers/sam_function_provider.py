@@ -43,10 +43,10 @@ class SamFunctionProvider(SamBaseProvider):
         self.ignore_code_extraction_warnings = ignore_code_extraction_warnings
         self.resources = self.template_dict.get("Resources", {})
 
-        LOG.debug("%d resources found in the template", len(self.resources))
-
         # Store a map of function name to function information for quick reference
         self.functions = self._extract_functions(self.resources, self.ignore_code_extraction_warnings)
+
+        LOG.debug("%d function resources found in the template", len(self.functions))
 
         self._deprecated_runtimes = {"nodejs4.3", "nodejs6.10", "nodejs8.10", "dotnetcore2.0"}
         self._colored = Colored()

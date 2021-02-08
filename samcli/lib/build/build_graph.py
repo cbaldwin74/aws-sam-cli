@@ -10,7 +10,7 @@ from uuid import uuid4
 import tomlkit
 
 from samcli.lib.build.exceptions import InvalidBuildGraphException
-from samcli.lib.providers.provider import Function, LayerVersion
+from samcli.lib.providers.provider import Function, LayerVersion, ServerlessApplication
 from samcli.lib.utils.packagetype import ZIP
 
 LOG = logging.getLogger(__name__)
@@ -28,6 +28,8 @@ LAYER_NAME_FIELD = "layer_name"
 BUILD_METHOD_FIELD = "build_method"
 COMPATIBLE_RUNTIMES_FIELD = "compatible_runtimes"
 LAYER_FIELD = "layer"
+APPLICATION_NAME_FIELD = "name"
+APPLICATION_LOCATION_FIELD = "location"
 
 
 def _function_build_definition_to_toml_table(
@@ -138,6 +140,53 @@ def _toml_table_to_layer_build_definition(uuid: str, toml_table: tomlkit.items.T
     layer_build_definition.uuid = uuid
     return layer_build_definition
 
+def _serverless_application_build_definition_to_toml_table(
+    serverless_application_build_definition: "ServerlessApplicationBuildDefinition",
+) -> tomlkit.items.Table:
+    """
+    Converts given serverless_application_build_definition into toml table representation
+
+    Parameters
+    ----------
+    serverless_application_build_definition: ServerlessApplicationBuildDefinition
+        ServerlessApplicationBuildDefinition which will be converted into toml table
+
+    Returns
+    -------
+    tomlkit.items.Table
+        toml table of ServerlessApplicationBuildDefinition
+    """
+    toml_table = tomlkit.table()
+    toml_table[APPLICATION_NAME_FIELD] = serverless_application_build_definition.name
+    toml_table[APPLICATION_LOCATION_FIELD] = serverless_application_build_definition.location
+    toml_table[SOURCE_MD5_FIELD] = serverless_application_build_definition.source_md5
+
+    return toml_table
+
+
+def _toml_table_to_serverless_application_build_definition(uuid: str, toml_table: tomlkit.items.Table) -> "ServerlessApplicationBuildDefinition":
+    """
+    Converts given toml table into ServerlessApplicationBuildDefinition instance
+
+    Parameters
+    ----------
+    uuid: str
+        key of the function toml_table instance
+    toml_table: tomlkit.items.Table
+        function build definition as toml table
+
+    Returns
+    -------
+    ServerlessApplicationBuildDefinition
+        ServerlessApplicationBuildDefinition of given toml table
+    """
+    serverless_application_build_definition = ServerlessApplicationBuildDefinition(
+        toml_table.get(APPLICATION_NAME_FIELD),
+        toml_table.get(APPLICATION_LOCATION_FIELD),
+        toml_table.get(SOURCE_MD5_FIELD, ""),
+    )
+    serverless_application_build_definition.uuid = uuid
+    return serverless_application_build_definition
 
 class BuildGraph:
     """
@@ -147,12 +196,14 @@ class BuildGraph:
     # global table build definitions key
     FUNCTION_BUILD_DEFINITIONS = "function_build_definitions"
     LAYER_BUILD_DEFINITIONS = "layer_build_definitions"
+    SERVERLESS_APPLICATION_BUILD_DEFINITIONS = "serverless_application_build_definitions"
 
     def __init__(self, build_dir: str) -> None:
         # put build.toml file inside .aws-sam folder
         self._filepath = Path(build_dir).parent.joinpath(DEFAULT_BUILD_GRAPH_FILE_NAME)
         self._function_build_definitions: List["FunctionBuildDefinition"] = []
         self._layer_build_definitions: List["LayerBuildDefinition"] = []
+        self._serverless_application_build_definitions: List["ServerlessApplicationBuildDefinition"] = []
         self._read()
 
     def get_function_build_definitions(self) -> Tuple["FunctionBuildDefinition", ...]:
@@ -160,6 +211,9 @@ class BuildGraph:
 
     def get_layer_build_definitions(self) -> Tuple["LayerBuildDefinition", ...]:
         return tuple(self._layer_build_definitions)
+
+    def get_serverless_application_build_definitions(self) -> Tuple["ServerlessApplicationBuildDefinition", ...]:
+        return tuple(self._serverless_application_build_definitions)
 
     def put_function_build_definition(
         self, function_build_definition: "FunctionBuildDefinition", function: Function
@@ -233,6 +287,43 @@ class BuildGraph:
             layer_build_definition.layer = layer
             self._layer_build_definitions.append(layer_build_definition)
 
+    def put_serverless_application_build_definition(
+        self, serverless_application_build_definition: "ServerlessApplicationBuildDefinition", serverless_application: ServerlessApplication
+    ) -> None:
+        """
+        Puts the newly read serverless application build definition into existing build graph.
+        If graph already contains a serverless application build definition which is same as the newly passed one, then it will add
+        the serverless application to the existing one, discarding the new one
+
+        If graph doesn't contain such unique serverless application build definition, it will be added to the current build graph
+
+        Parameters
+        ----------
+        serverless_application_build_definition: ServerlessApplicationBuildDefinition
+            serverless application build definition which is newly read from template.yaml file
+        serverless_application: ServerlessApplication
+             serverless application details for this  serverless application build definition
+        """
+        if serverless_application_build_definition in self._serverless_application_build_definitions:
+            previous_build_definition = self._serverless_application_build_definitions[
+                self._serverless_application_build_definitions.index(serverless_application_build_definition)
+            ]
+            LOG.debug(
+                "Same serverless application build definition found, adding function (Previous: %s, Current: %s, Application: %s)",
+                previous_build_definition,
+                serverless_application_build_definition,
+                serverless_application,
+            )
+            previous_build_definition.add_serverless_application(serverless_application)
+        else:
+            LOG.debug(
+                "Unique function build definition found, adding as new (Function Build Definition: %s, Application: %s)",
+                serverless_application_build_definition,
+                serverless_application,
+            )
+            serverless_application_build_definition.add_serverless_application(serverless_application)
+            self._serverless_application_build_definitions.append(serverless_application_build_definition)
+
     def clean_redundant_definitions_and_update(self, persist: bool) -> None:
         """
         Removes build definitions which doesn't have any function in it, which means these build definitions
@@ -244,6 +335,9 @@ class BuildGraph:
             fbd for fbd in self._function_build_definitions if len(fbd.functions) > 0
         ]
         self._layer_build_definitions[:] = [bd for bd in self._layer_build_definitions if bd.layer]
+        self._serverless_application_build_definitions[:] = [
+            sabd for sabd in self._serverless_application_build_definitions if sabd.location
+        ]
         if persist:
             self._write()
 
@@ -275,6 +369,13 @@ class BuildGraph:
             )
             self._layer_build_definitions.append(layer_build_definition)
 
+        serverless_application_build_definitions_table = document.get(BuildGraph.SERVERLESS_APPLICATION_BUILD_DEFINITIONS, [])
+        for serverless_application_build_definition_key in serverless_application_build_definitions_table:
+            serverless_application_build_definition = _toml_table_to_serverless_application_build_definition(
+                serverless_application_build_definition_key, serverless_application_build_definitions_table[serverless_application_build_definition_key]
+            )
+            self._serverless_application_build_definitions.append(serverless_application_build_definition)
+
     def _write(self) -> None:
         """
         Writes build definition details into build.toml file, which would be used by the next build.
@@ -293,11 +394,17 @@ class BuildGraph:
             build_definition_as_table = _layer_build_definition_to_toml_table(layer_build_definition)
             layer_build_definitions_table.add(layer_build_definition.uuid, build_definition_as_table)
 
+        serverless_application_build_definitions_table = tomlkit.table()
+        for serverless_application_build_definition in self._serverless_application_build_definitions:
+            build_definition_as_table = _serverless_application_build_definition_to_toml_table(serverless_application_build_definition)
+            serverless_application_build_definitions_table.add(serverless_application_build_definition.uuid, build_definition_as_table)
+
         # create toml document and add build definitions
         document = tomlkit.document()
         document.add(tomlkit.comment("This file is auto generated by SAM CLI build command"))
         document.add(BuildGraph.FUNCTION_BUILD_DEFINITIONS, function_build_definitions_table)
         document.add(BuildGraph.LAYER_BUILD_DEFINITIONS, layer_build_definitions_table)
+        document.add(BuildGraph.SERVERLESS_APPLICATION_BUILD_DEFINITIONS, serverless_application_build_definitions_table)
 
         if not self._filepath.exists():
             open(self._filepath, "a+").close()
@@ -427,4 +534,46 @@ class FunctionBuildDefinition(AbstractBuildDefinition):
             and self.codeuri == other.codeuri
             and self.packagetype == other.packagetype
             and self.metadata == other.metadata
+        )
+
+class ServerlessApplicationBuildDefinition(AbstractBuildDefinition):
+    """
+    ServerlessApplicationBuildDefinition holds information about each unique serverless application
+    """
+
+    def __init__(self, name: str, location: dict, source_md5: str = "") -> None:
+        super().__init__(source_md5)
+        self.name = name
+        self.location = location
+        self.applications: List[ServerlessApplication] = []
+
+    def add_serverless_application(self, serverless_application: ServerlessApplication) -> None:
+        self.applications.append(serverless_application)
+
+    def __str__(self) -> str:
+        return (
+            "ServerlessApplicationBuildDefinition("
+            f"{self.name}, {self.location}, {self.source_md5}, {self.uuid})"
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        """
+        Checks equality of the serverless application build definition
+
+        Parameters
+        ----------
+        other: Any
+            other serverless application build definition to compare
+
+        Returns
+        -------
+        bool
+            True if both serverless application build definitions have the same following properties, False otherwise
+        """
+        if not isinstance(other, ServerlessApplicationBuildDefinition):
+            return False
+
+        return (
+            self.name == other.name
+            and self.location == other.location
         )

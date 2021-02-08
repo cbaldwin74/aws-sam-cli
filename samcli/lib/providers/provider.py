@@ -317,14 +317,15 @@ class AbstractApiProvider:
         """
         raise NotImplementedError("not implemented")
 
+# Named Tuple to represent the properties of a Serverless Application
 class ServerlessApplication(NamedTuple):
     """
     A Serverless Application
     """
-    # Function name or logical ID
+    # Application name or logical ID
     name: str
     # Location
-    location: str|dict
+    location: dict
     # Notification ARNs
     notification_arns: Optional[List]
     # Parameters
